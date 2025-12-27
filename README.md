@@ -1,8 +1,8 @@
-# Titans MAC (Memory as Context) - Complete Investigation
+# Titans MAC (Memory as Context) -  Investigation
 
-Implementation of Google DeepMind's "Titans" MAC architecture for infinite-context LLMs, with comprehensive experimental validation.
+Implementation attempt of Google DeepMind's "Titans" MAC architecture for infinite-context LLMs, with  experimental validation.
 
-## Executive Summary
+## Executive Summary - so far
 
 **TL;DR**: MAC works, but not for retrieval. Reconstruction-based learning produces subtle text variation, not fact retrieval or style transfer.
 
