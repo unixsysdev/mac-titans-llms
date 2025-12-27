@@ -37,9 +37,9 @@ class MemoryMLP(nn.Module):
         grads = torch.autograd.grad(loss, self.parameters(), retain_graph=True, allow_unused=True)
         for param, grad in zip(self.parameters(), grads):
             if grad is not None:
-                # TUNED: Conservative learning rate for stable training
-                # 0.01 was causing loss explosion to inf
-                param.data = param.data - (1e-4 * grad)
+                # AGGRESSIVE TUNING: Increased learning rate for faster learning
+                # 1e-4 → 5e-4 to try to get more robust pattern storage
+                param.data = param.data - (5e-4 * grad)
 
     def reset_memory(self):
         """Reset memory weights to initial random state"""
@@ -56,9 +56,9 @@ class TitansMACLayer(nn.Module):
         super().__init__()
         self.memory_mlp = MemoryMLP(hidden_size)
         self.layernorm = nn.LayerNorm(hidden_size)
-        # TUNED: Threshold based on observed loss values
-        # Phase 2 losses are 20-50, so 25.0 should trigger updates on novel content
-        self.surprise_threshold = 25.0 
+        # AGGRESSIVE TUNING: Lowered threshold to trigger more updates
+        # 25.0 → 15.0 to try to capture more patterns
+        self.surprise_threshold = 15.0 
 
     def forward(self, current_hidden_states: torch.Tensor, prev_memory_state: Optional[torch.Tensor] = None):
         """
@@ -125,7 +125,9 @@ class QwenWithTitans:
         
         # MAC Logic: "Silent Learning" until context overflow
         self.total_tokens_processed = 0
-        self.start_memory_injection_threshold = 32000 
+        # AGGRESSIVE TUNING: Start injection much earlier to test effect
+        # 32000 → 4000 to inject during test phase
+        self.start_memory_injection_threshold = 4000 
         
         # Qwen usually puts layers in model.layers
         self.layers_list = None
@@ -181,9 +183,9 @@ class QwenWithTitans:
                     print(f"\n\033[92m>>> MAC MEMORY INJECTION ACTIVATED (Tokens > {self.start_memory_injection_threshold}) <<<\033[0m")
                     self.mac_active_message_shown = True
 
-                # TUNED: Gentler injection scale (0.1 instead of 1.0)
-                # 1.0 was too strong and disrupted generation
-                combined = hidden_states + 0.1 * mem_out
+                # EXTREME TUNING: Maximum injection scale to test if it has ANY effect
+                # 0.3 → 1.0 for maximum possible injection
+                combined = hidden_states + 1.0 * mem_out
                 return (combined, *input[1:])
             else:
                 # BEFORE injection threshold: Only compute MAC (for learning), don't inject
