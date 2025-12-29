@@ -1,229 +1,97 @@
-# Titans MAC (Memory as Context) -  Investigation
+# Titans MAC (Memory as Context) - Investigation & Evolution
 
-Implementation attempt of Google DeepMind's "Titans" MAC architecture for infinite-context LLMs, with  experimental validation.
+## Executive Summary
+**Current Status**: Phase 1 (Passive Reconstruction) Complete.  
+**Key Finding**: The **Addressing Gap**. The model successfully learns from streaming data via the surprise mechanism and injects that data into the residual stream, but **Identity Mapping ($f(x) \approx x$)** is insufficient for association. 
 
-## Executive Summary - so far
-
-**TL;DR**: MAC works, but not for retrieval. Reconstruction-based learning produces subtle text variation, not fact retrieval or style transfer.
-
-### What Works ✅
-- MAC learns from streaming data (surprise mechanism)
-- MAC injects into model (confirmed via generation differences)
-- Subtle text variation/phrasing changes
-
-### What Doesn't Work ❌
-- Fact retrieval from long context
-- Rule learning (alien words → meanings)
-- Style transfer (pirate speak injection)
-- Word-meaning associations
-
-## Core Architecture
-
-### Memory as Context (MAC) Layer
-```python
-class TitansMACLayer(nn.Module):
-    def forward(self, hidden_states):
-        # 1. Attempt to reconstruct input
-        memory_output = self.memory_mlp(hidden_states)
-
-        # 2. Compute reconstruction loss (MSE)
-        loss = F.mse_loss(memory_output, hidden_states)
-
-        # 3. Update if "surprised" (high error)
-        if loss > threshold:
-            self.memory_mlp.update_memory(hidden_states, loss)
-
-        # 4. Inject residually into stream
-        return memory_output
-```
-
-**Integration**: Injected at layer 18 via forward pre-hooks
-**Learning**: Test-time training with gradients enabled during inference
-**Objective**: Reconstruction (identity mapping)
-
-## Experimental Results
-
-### Experiment 1: Alien Language Rule Learning
-**Goal**: Test if MAC can learn word-meaning mappings
-
-**Setup**:
-- Document: 8,951 tokens of Q&A pairs (50x repetition)
-- Pattern: "'glorp' means beautiful", 'frazz' means computer", etc.
-- Test: Ask "What does 'glorp' mean?"
-
-**Result**: ❌ **0/3 tests passed**
-- Model treats alien words as nonsense
-- No translation to meanings
-- Even with exact Q&A in learning document
-
-**Conclusion**: Reconstruction ≠ Association
-
-### Experiment 2: Pirate Style Transfer
-**Goal**: Test if MAC can maintain writing style across contexts
-
-**Setup**:
-- Document: 12,561 tokens of pirate phrases (80x repetition)
-- Pattern: "Ahoy matey! Shiver me timbers!"
-- Test: Ask unrelated questions (computer program, photosynthesis)
-
-**Result**: ❌ **0/4 responses with pirate style**
-- Average: 0.5 pirate indicators per response
-- Model writes in normal formal style
-- No style injection detected
-
-**Conclusion**: Style transfer requires associative memory
-
-### Experiment 3: Pattern Completion
-**Goal**: Test if MAC can complete number-square patterns
-
-**Setup**:
-- Document: "The magic number is 1. Square is 1. Magic number is 2. Square is 4..."
-- Test: "Magic number is 51. Square is?"
-
-**Result**: ❌ **Failed**
-- Model doesn't do arithmetic
-- Pattern completion requires computation, not reconstruction
-
-### Experiment 4: Text Reproduction
-**Goal**: Test if MAC can recall specific text
-
-**Setup**:
-- Learn: "The crimson dragonfly danced above the emerald pond at sunset..."
-- Test: "What text comes after 'The crimson dragonfly'?"
-
-**Result**: ❌ **13.8% word overlap (same as baseline)**
-- No improvement over baseline
-- MAC doesn't enable factual recall
-
-### Experiment 5: Perplexity Reduction
-**Goal**: Measure if MAC reduces perplexity on learned patterns
-
-**Setup**:
-- Learn: Repetitive nature text (1301 tokens)
-- Test: Similar text vs. unrelated text
-- Metric: Perplexity (lower = better)
-
-**Result**: ❌ **35.95 → 35.95 (0% change)**
-- No measurable perplexity reduction
-- Effect too subtle to detect via perplexity
-
-### Experiment 6: MAC Injection Diagnostic ✅
-**Goal**: Direct measurement of MAC's effect on generation
-
-**Setup**:
-- Learn: Pirate text (1402 tokens)
-- Test: Generate "Once upon a time..." with/without MAC
-- Comparison: Word-for-word difference
-
-**Result**: ✅ **SUCCESS - Responses differ!**
-
-**Without MAC**:
-> "Once upon a time, in a quiet village nestled between hills and woods, there lived a young girl named Lila. She had soft brown hair..."
-
-**With MAC**:
-> "Once upon a time, in a quiet corner of the world nestled between rolling green hills and whispering woods, there was a small village where the sun..."
-
-**Conclusion**: MAC works! It produces subtle but real variations in text generation.
-
-## Why Reconstruction ≠ Retrieval
-
-### The Fundamental Mismatch
-
-| Aspect | Reconstruction (MAC) | Association (Needed) |
-|--------|---------------------|---------------------|
-| **Learns** | `f(hidden) ≈ hidden` | `f(question) → answer` |
-| **Objective** | Minimize reconstruction error | Map queries to responses |
-| **Query State** | Reconstructs query itself | Maps to different answer state |
-| **Use Case** | Pattern continuation | Fact retrieval |
-
-### The Problem
-
-Question and answer have **different hidden states**:
-- Query: "What does 'glorp' mean?" → hidden_state_Q
-- Answer: "'glorp' means beautiful" → hidden_state_A
-
-MAC learns to reconstruct hidden_state_Q, but that doesn't help generate hidden_state_A.
-
-## Technical Implementation
-
-### Files
-```
-qwen3_4b/
-├── qwen_mac.py                 # Core MAC implementation
-├── alien_language_test.py      # Rule learning test
-├── style_transfer_test.py      # Style transfer test
-├── pattern_completion_test.py  # Pattern completion test
-├── text_reproduction_test.py   # Text recall test
-├── perplexity_test.py          # Perplexity measurement
-├── mac_injection_test.py       # ✅ SUCCESS: Proves MAC works
-├── needle_test.py              # Needle-in-haystack test
-└── FINAL_FINDINGS.md           # Detailed investigation notes
-```
-
-### Final Configuration
-```python
-learning_rate: 5e-4              # 5x faster (aggressive tuning)
-injection_scale: 1.0             # Maximum strength
-surprise_threshold: 15.0         # Low threshold for more updates
-start_injection: 4000 tokens     # Inject during test phase
-```
-
-**Note**: Even with extreme parameters, MAC couldn't enable association tasks.
-
-## Key Findings
-
-1. **MAC Implementation is Correct** ✅
-   - Forward hooks execute properly
-   - Surprise mechanism triggers
-   - Injection activates at threshold
-   - Generation is measurably affected
-
-2. **Reconstruction Works** ✅
-   - MAC learns patterns
-   - MAC injects learned patterns
-   - Effect: subtle text variation
-
-3. **Wrong Objective for Our Tasks** ❌
-   - Cannot retrieve facts
-   - Cannot learn rules
-   - Cannot transfer style
-   - Architectural limitation, not tuning issue
-
-4. **No Amount of Tuning Helps** ❌
-   - Tested 5x faster learning
-   - Tested 10x stronger injection
-   - Tested 50-80x pattern repetition
-   - All failed for association
-
-## Conclusions
-
-### What MAC Is Good For
-- Text completion/suggestion
-- Creative writing assistance
-- Subtle style variation
-- Pattern continuation
-
-### What MAC Is NOT Good For
-- Question answering
-- Knowledge retrieval
-- Rule application
-- Strong style transfer
-- Word-meaning associations
-
-### For Retrieval Tasks, Use Instead
-- Key-Value memory
-- Retrieval-Augmented Generation (RAG)
-- Vector databases with semantic search
-- Traditional attention with longer context
-
-## References
-
-- **Titans**: "Titans: Learning to Memorize at Test Time" (Google DeepMind)
-- **TTT**: "Test-Time Training" (Grave et al., 2020)
-- **Qwen**: https://huggingface.co/Qwen
+To solve "Needle in a Haystack" and "Rule Learning," we must shift from **Passive Echoing** to **Active Differentiable Search**.
 
 ---
 
-**Status**: Investigation Complete
-**Verdict**: MAC works for reconstruction, not association
-**Next**: Try key-value memory or accept 8k token limit
+## 1. Phase 1 Archive: Experimental Results (Passive MAC)
+
+**TL;DR**: MAC produces measurable text variation but fails at fact retrieval and style transfer due to the lack of an associative indexing mechanism.
+
+### Experimental Outcomes
+
+| Experiment | Task | Status | Root Cause of Failure |
+| :--- | :--- | :--- | :--- |
+| **Exp 1** | Alien Language (Glorp) | ❌ **Fail** | Reconstruction $\neq$ Association. |
+| **Exp 2** | Pirate Style Transfer | ❌ **Fail** | Passive residuals are too diluted to shift global style. |
+| **Exp 3** | Pattern Completion | ❌ **Fail** | Requires active computation, not identity mirroring. |
+| **Exp 4** | Text Reproduction | ❌ **Fail** | Factual recall requires a "Search Bar" (Query). |
+| **Exp 6** | Injection Diagnostic | ✅ **SUCCESS** | **Proof of Life.** MAC changes the model's trajectory. |
+
+### Phase 1 Diagnostic Conclusion
+The implementation is technically sound—the "Surprise" triggers and injection occurs. The failure is **architectural**: The model stores information as a *numerical anomaly* in the weights, but tries to retrieve it as a *semantic concept* via the residual stream. These two spaces are currently unaligned.
+
+---
+
+## 2. Phase 2 Architecture: Active Differentiable Search
+
+To bridge the retrieval gap, we are replacing the **Identity-based MLP** with a **Latent Query Loop**. Instead of the MAC "pushing" a residual, the Transformer "pulls" specific data via a searchable index.
+
+### Core Components
+* **The Index (MAC Weights):** Functions as a high-dimensional neural vector database.
+* **The Query (Latent Intent):** A vector produced by the model representing the "search intent" (e.g., *"I need the info related to this high-surprise moment"*).
+* **Differentiable Refinement:** The model uses the **gradient of search quality** to "nudge" its internal query until it resonates with the specific weights where the information was stored.
+
+
+
+### The "System 2" Generation Flow
+1.  **Trigger**: High logit entropy detected (the model realizes it is about to guess).
+2.  **Search State**: The model pauses output and generates a **Latent Query Vector**.
+3.  **Interrogation**: The query is compared against the MAC/KV memory in a loop.
+4.  **Convergence**: The model iterates internally until the search result stabilizes.
+5.  **Emission**: The retrieved vector is injected into the current layer to produce the "Needle."
+
+---
+
+## 3. Technical Implementation Strategy
+
+### Updated MAC Layer (Pseudo-Code)
+```python
+class TitansSearchMAC(nn.Module):
+    def forward(self, hidden_states):
+        # 1. GENERATE SEARCH INTENT
+        # Instead of f(h) ≈ h, we learn f(h) → Query_Vector
+        latent_query = self.query_projector(hidden_states)
+
+        # 2. SYSTEM 2 LOOP (Latent Reasoning)
+        for _ in range(self.thinking_steps):
+            # Differentiable search against internal weights
+            search_result = self.memory_mlp.search(latent_query)
+            # Refine the query based on the result's "sharpness" (Gradient Descent)
+            latent_query = self.refine_query(latent_query, search_result)
+
+        # 3. GATED INJECTION
+        # Only inject if the search found something relevant
+        gate = torch.sigmoid(self.relevance_head(search_result))
+        return hidden_states + (search_result * gate)
+```
+
+
+
+## 4. Next Action Plan: "Forced Alignment"
+
+### Experiment 7: Contrastive Memory Anchoring
+* **Objective**: Link "Question Intent" to "High Surprise Updates."
+* **Method**: During TTT (Test-Time Training), implement a **Contrastive Loss**.
+* **Goal**: Minimize the mathematical distance between the Query(Question) and the Weights(Needle) specifically when the "Surprise" factor is high.
+
+### Experiment 8: The Gradient Stop-Condition
+* **Objective**: Establish dynamic "Thinking" time based on confidence.
+* **Method**: Monitor the **MAC Gradient Magnitude** during the latent loop.
+* **Logic**: Keep "Thinking" while the internal memory state is shifting. Only generate a token when the gradient flattens (convergence).
+
+---
+
+## 5. Technical Glossary
+* **Differentiable Search**: Transitioning from a discrete lookup to an optimized latent query using internal gradients.
+* **Wave Function Collapse**: The moment a high-entropy latent search commits to a single output token after reasoning.
+* **Representation Drift**: The tendency for latent vectors to lose semantic meaning if not "pinned" to language during training.
+
+---
+
+**Status**: Active Research Phase 2  
+**Current Task**: Implementation of Query Projector and Alignment Loss.
